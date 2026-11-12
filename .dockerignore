@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+**/.env*
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/*.dump
+**/*.pem
+**/*.key
+**/*.log
+backups
+storage
+public/uploads
+discord bot

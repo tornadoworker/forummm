@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+*.log
+.env*
+!.env.example
+*.pem
+*.key
+*.db
+*.db-*
+*.sqlite*
+*.dump
+backups/
+storage/
+public/uploads/

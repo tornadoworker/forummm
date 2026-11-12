@@ -1,0 +1,26 @@
+{
+  "name": "vega-crimelife-discord-bot",
+  "version": "1.0.0",
+  "description": "Offizieller VEGA CrimeLife Discord Bot - Verbunden mit FiveM Server, Forum & Discord",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy-commands": "node src/register-commands.js"
+  },
+  "keywords": [
+    "vega",
+    "crimelife",
+    "fivem",
+    "discord",
+    "bot",
+    "forum"
+  ],
+  "author": "VEGA CrimeLife Team",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7"
+  }
+}

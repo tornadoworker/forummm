@@ -1,0 +1,705 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model PublicUpload {
+  url      String @id
+  mimeType String
+  content  Bytes
+}
+
+model User {
+  id                String    @id @default(uuid())
+  username          String    @unique
+  lastUsernameChange DateTime?
+  email             String    @unique
+  passwordHash      String
+  avatarUrl         String?
+  bannerUrl         String?
+  displayName       String?
+  bio               String?
+  location          String?
+  website           String?
+  roleId            String
+  role              Role      @relation(fields: [roleId], references: [id])
+  isBanned          Boolean   @default(false)
+  banReason         String?
+  bannedUntil       DateTime?
+  isMuted           Boolean   @default(false)
+  mutedUntil        DateTime?
+  warningPoints     Int       @default(0)
+  twoFactorEnabled        Boolean   @default(false)
+  twoFactorSecret         String?
+  twoFactorTempSecret     String?
+  twoFactorRecoveryCodes  String?
+  fivemId           String?
+  discordId         String?   @unique
+  discordTag        String?
+  
+  // Sitzungssicherheit & Härtung
+  sessionVersion          Int       @default(1)
+  lastPasswordChangeAt    DateTime?
+  lastReauthAt            DateTime?
+
+  // Datenschutz
+  showOnlineStatus    Boolean   @default(true)
+  profilePublic       Boolean   @default(true)
+  allowDMs            Boolean   @default(true)
+  allowProfilePosts   Boolean   @default(true)
+  showActivity        Boolean   @default(true)
+
+  // Benachrichtigungseinstellungen
+  notifyReplies       Boolean   @default(true)
+  notifyMentions      Boolean   @default(true)
+  notifyReactions     Boolean   @default(true)
+  notifyDMs           Boolean   @default(true)
+  notifyTickets       Boolean   @default(true)
+  notifyAnnouncements Boolean   @default(true)
+  notifyEmail         Boolean   @default(false)
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastActiveAt      DateTime  @default(now())
+
+  // Relationen Forum
+  threads           Thread[]
+  posts             Post[]
+  reactions         Reaction[]
+  pollVotes         PollVote[]
+  bookmarks         Bookmark[]
+
+  // Relationen Tickets
+  ticketsCreated    Ticket[]          @relation("TicketAuthor")
+  ticketsAssigned   Ticket[]          @relation("TicketAssignee")
+  ticketMessages    TicketMessage[]
+  ticketAudits      TicketAuditLog[]
+
+  // Relationen Nachrichten
+  conversations     ConversationParticipant[]
+  directMessages    DirectMessage[]
+
+  // Relationen Notifications
+  notifications     Notification[]
+
+  // Relationen Wiki
+  wikiArticles      WikiArticle[]
+
+  // Relationen Profil
+  profilePosts      ProfileMessage[]  @relation("ProfileOwner")
+  authoredProfilePosts ProfileMessage[] @relation("ProfileAuthor")
+  // Relationen Moderation
+  warningsReceived  Warning[]         @relation("UserWarnings")
+  warningsIssued    Warning[]         @relation("IssuedWarnings")
+  reportsCreated    Report[]          @relation("ReportAuthor")
+  reportsAssigned   Report[]          @relation("ReportAssignee")
+  bansReceived      BanRecord[]       @relation("UserBans")
+  bansIssued        BanRecord[]       @relation("IssuedBans")
+  // Relationen Wettbewerbe & Statistiken
+  competitionsCreated Competition[]           @relation("CompetitionCreator")
+  competitionParticipants CompetitionParticipant[]
+  matchesWon          CompetitionMatch[]      @relation("MatchWinner")
+  matchesLost         CompetitionMatch[]      @relation("MatchLoser")
+  matchesChallenged   CompetitionMatch[]      @relation("MatchChallenger")
+  matchesChallengedOpp CompetitionMatch[]     @relation("MatchChallenged")
+  playerStatsSnapshot PlayerStatsSnapshot?
+
+  // System & Sicherheit
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+  privateAttachments  PrivateAttachment[]
+}
+
+model Role {
+  id                 String   @id @default(uuid())
+  name               String   @unique
+  displayName        String
+  color              String   // z.B. #EF4444 für Admin, #4C8DFF für Supporter
+  badgeBg            String   // z.B. rgba(239, 68, 68, 0.15)
+  priority           Int      @default(0) // Höhere Zahl = höhere Berechtigung
+  canCreateThreads   Boolean  @default(true)
+  canEditPosts       Boolean  @default(false)
+  canDeletePosts     Boolean  @default(false)
+  canPinThreads      Boolean  @default(false)
+  canCloseThreads    Boolean  @default(false)
+  canMoveThreads     Boolean  @default(false)
+  canManageCategories Boolean @default(false)
+  canManageRoles     Boolean  @default(false)
+  canAccessAdmin     Boolean  @default(false)
+  canManageTickets   Boolean  @default(false)
+  canViewInternalNotes Boolean @default(false)
+  canBanUsers        Boolean  @default(false)
+  canWarnUsers       Boolean  @default(false)
+  canMuteUsers       Boolean  @default(false)
+  canModerateForum   Boolean  @default(false)
+  canEditWiki        Boolean  @default(false)
+
+  users              User[]
+  createdAt          DateTime @default(now())
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  icon        String    @default("Folder")
+  order       Int       @default(0)
+  isStaffOnly Boolean   @default(false)
+  forums      Forum[]
+  createdAt   DateTime  @default(now())
+}
+
+model Forum {
+  id            String    @id @default(uuid())
+  categoryId    String
+  category      Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  parentId      String?
+  parent        Forum?    @relation("SubForums", fields: [parentId], references: [id], onDelete: Cascade)
+  subforums     Forum[]   @relation("SubForums")
+  name          String
+  description   String?
+  icon          String    @default("MessageSquare")
+  order         Int       @default(0)
+  isStaffOnly   Boolean   @default(false)
+  minRoleToPost Int       @default(0)
+  rules         String?
+  isArchived    Boolean   @default(false)
+  threadsCount  Int       @default(0)
+  postsCount    Int       @default(0)
+  lastPostAt    DateTime?
+  threads       Thread[]
+  createdAt     DateTime  @default(now())
+}
+
+model ThreadPrefix {
+  id        String   @id @default(uuid())
+  name      String   @unique // z.B. Wichtig, Ankündigung, Support, Vorschlag, In Prüfung, Angenommen, Abgelehnt, Erledigt
+  color     String   // Textfarbe
+  bgColor   String   // Hintergrundfarbe Badge
+  isActive  Boolean  @default(true)
+  isRequired Boolean @default(false)
+  order     Int      @default(0)
+  forumIds  String?  // Komma-getrennte Forum-IDs (oder null für alle Foren)
+  threads   Thread[]
+  createdAt DateTime @default(now())
+}
+
+model Thread {
+  id             String        @id @default(uuid())
+  forumId        String
+  forum          Forum         @relation(fields: [forumId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  prefixId       String?
+  prefix         ThreadPrefix? @relation(fields: [prefixId], references: [id], onDelete: SetNull)
+  title          String
+  isPinned       Boolean       @default(false)
+  isLocked       Boolean       @default(false)
+  isDeleted      Boolean       @default(false)
+  deletedAt      DateTime?
+  deletedById    String?
+  viewsCount     Int           @default(0)
+  repliesCount   Int           @default(0)
+  lastActivityAt DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  posts          Post[]
+  poll           Poll?
+  bookmarks      Bookmark[]
+  reports        Report[]
+}
+
+model Post {
+  id         String     @id @default(uuid())
+  threadId   String
+  thread     Thread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content    String
+  isEdited   Boolean    @default(false)
+  editedAt   DateTime?
+  isDeleted  Boolean    @default(false)
+  deletedAt  DateTime?
+  deletedById String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  reactions  Reaction[]
+  reports    Report[]
+}
+
+model Reaction {
+  id        String   @id @default(uuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // LIKE, HEART, FIRE, LAUGH, DISLIKE, CLAP
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId, type])
+}
+
+model Poll {
+  id           String       @id @default(uuid())
+  threadId     String       @unique
+  thread       Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  question     String
+  isMultiChoice Boolean     @default(false)
+  expiresAt    DateTime?
+  options      PollOption[]
+  createdAt    DateTime     @default(now())
+}
+
+model PollOption {
+  id         String     @id @default(uuid())
+  pollId     String
+  poll       Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  text       String
+  votesCount Int        @default(0)
+  votes      PollVote[]
+}
+
+model PollVote {
+  id           String     @id @default(uuid())
+  pollOptionId String
+  pollOption   PollOption @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([pollOptionId, userId])
+}
+
+model Bookmark {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId  String
+  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, threadId])
+}
+
+model TicketCategory {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  description         String
+  icon                String   @default("LifeBuoy")
+  requiresPlayerName  Boolean  @default(false)
+  requiresEvidence    Boolean  @default(false)
+  tickets             Ticket[]
+  createdAt           DateTime @default(now())
+}
+
+model Ticket {
+  id             String          @id @default(uuid())
+  ticketNumber   String          @unique // z.B. CLN-1001
+  categoryId     String
+  category       TicketCategory  @relation(fields: [categoryId], references: [id])
+  authorId       String
+  author         User            @relation("TicketAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  assignedToId   String?
+  assignedTo     User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  title          String
+  description    String
+  affectedPlayer String?
+  evidenceUrl    String?
+  status         String          @default("OPEN") // OPEN, IN_PROGRESS, WAITING_FOR_USER, WAITING_FOR_STAFF, ESCALATED, CLOSED
+  priority       String          @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  closedAt       DateTime?
+
+  messages       TicketMessage[]
+  auditLogs      TicketAuditLog[]
+  attachments    PrivateAttachment[]
+}
+
+model TicketMessage {
+  id             String   @id @default(uuid())
+  ticketId       String
+  ticket         Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content        String
+  isInternalNote Boolean  @default(false) // STRENG GEHEIM: nur für Team mit canViewInternalNotes sichtbar!
+  attachmentUrl  String?
+  createdAt      DateTime @default(now())
+}
+
+model TicketAuditLog {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // STATUS_CHANGE, ASSIGN, PRIORITY_CHANGE, CLOSE, REOPEN, ESCALATE
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+}
+
+model Conversation {
+  id           String                    @id @default(uuid())
+  title        String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  participants ConversationParticipant[]
+  messages     DirectMessage[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime     @default(now())
+
+  @@unique([conversationId, userId])
+}
+
+model DirectMessage {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  attachmentUrl  String?
+  createdAt      DateTime     @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // REPLY, MENTION, REACTION, DM, TICKET_UPDATE, TICKET_ASSIGNED, ANNOUNCEMENT
+  title     String
+  message   String
+  link      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model WikiCategory {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  icon        String        @default("Book")
+  order       Int           @default(0)
+  articles    WikiArticle[]
+  createdAt   DateTime      @default(now())
+}
+
+model WikiArticle {
+  id          String       @id @default(uuid())
+  categoryId  String
+  category    WikiCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title       String
+  slug        String       @unique
+  content     String
+  isPublished Boolean      @default(true)
+  viewsCount  Int          @default(0)
+  order       Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model ProfileMessage {
+  id            String   @id @default(uuid())
+  profileUserId String
+  profileUser   User     @relation("ProfileOwner", fields: [profileUserId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User     @relation("ProfileAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  content       String
+  createdAt     DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String   // USER_LOGIN, ROLE_CHANGE, THREAD_DELETE, BAN_USER, SETTINGS_UPDATE
+  targetType String?  // USER, THREAD, FORUM, TICKET
+  targetId   String?
+  details    String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+model Report {
+  id             String    @id @default(uuid())
+  type           String    // THREAD, POST, USER
+  targetId       String
+  reason         String    // SPAM, HARASSMENT, OFFENSIVE, MISINFORMATION, RULE_VIOLATION, OTHER
+  description    String?
+  status         String    @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, REJECTED
+  priority       String    @default("MEDIUM") // LOW, MEDIUM, HIGH
+  reporterId     String
+  reporter       User      @relation("ReportAuthor", fields: [reporterId], references: [id], onDelete: Cascade)
+  assignedToId   String?
+  assignedTo     User?     @relation("ReportAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  resolutionNote String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  threadId       String?
+  thread         Thread?   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  postId         String?
+  post           Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model Warning {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation("UserWarnings", fields: [userId], references: [id], onDelete: Cascade)
+  issuerId     String
+  issuer       User      @relation("IssuedWarnings", fields: [issuerId], references: [id], onDelete: Cascade)
+  reason       String
+  description  String?
+  points       Int       @default(1)
+  expiresAt    DateTime?
+  internalNote String?
+  isRevoked    Boolean   @default(false)
+  revokedAt    DateTime?
+  revokedById  String?
+  createdAt    DateTime  @default(now())
+}
+
+model BanRecord {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation("UserBans", fields: [userId], references: [id], onDelete: Cascade)
+  issuerId       String
+  issuer         User      @relation("IssuedBans", fields: [issuerId], references: [id], onDelete: Cascade)
+  type           String    @default("BAN") // BAN, MUTE
+  reason         String
+  internalNote   String?
+  expiresAt      DateTime? // null = permanent
+  isActive       Boolean   @default(true)
+  revokedAt      DateTime?
+  revokedById    String?
+  revocationNote String?
+  createdAt      DateTime  @default(now())
+}
+
+// ==========================================
+// 1. WETTBEWERBE & TURNIERE
+// ==========================================
+
+model Competition {
+  id              String                   @id @default(uuid())
+  title           String
+  slug            String                   @unique
+  description     String
+  rules           String
+  type            String                   @default("1V1") // 1V1, TEAM
+  format          String                   @default("ELIMINATION") // SINGLE_MATCH, ELIMINATION, ROUND_ROBIN
+  status          String                   @default("REGISTRATION_OPEN") // DRAFT, REGISTRATION_OPEN, IN_PROGRESS, COMPLETED, CANCELLED
+  maxParticipants Int                      @default(16)
+  minParticipants Int                      @default(2)
+  startDate       DateTime?
+  endDate         DateTime?
+  registrationClosesAt DateTime?
+  bannerUrl       String?
+  creatorId       String
+  creator         User                     @relation("CompetitionCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  participants    CompetitionParticipant[]
+  matches         CompetitionMatch[]
+}
+
+model CompetitionParticipant {
+  id              String                   @id @default(uuid())
+  competitionId   String
+  competition     Competition              @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamName        String?
+  status          String                   @default("REGISTERED") // REGISTERED, CONFIRMED, DISQUALIFIED, ELIMINATED
+  points          Int                      @default(0)
+  wins            Int                      @default(0)
+  losses          Int                      @default(0)
+  registeredAt    DateTime                 @default(now())
+
+  @@unique([competitionId, userId])
+}
+
+model CompetitionMatch {
+  id              String                   @id @default(uuid())
+  competitionId   String?
+  competition     Competition?             @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  matchNumber     Int?
+  round           Int                      @default(1)
+  challengerId    String
+  challenger      User                     @relation("MatchChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  challengedId    String
+  challenged      User                     @relation("MatchChallenged", fields: [challengedId], references: [id], onDelete: Cascade)
+  winnerId        String?
+  winner          User?                    @relation("MatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  loserId         String?
+  loser           User?                    @relation("MatchLoser", fields: [loserId], references: [id], onDelete: SetNull)
+  challengerScore Int                      @default(0)
+  challengedScore Int                      @default(0)
+  status          String                   @default("PENDING") // PENDING, ACCEPTED, REJECTED, IN_PROGRESS, COMPLETED, CANCELLED
+  scheduledAt     DateTime?
+  completedAt     DateTime?
+  resultNotes     String?
+  sourceType      String                   @default("MANUAL") // MANUAL, FIVEM_API
+  externalMatchId String?                  @unique
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+}
+
+// ==========================================
+// 2. LIVE STATISTIKEN & EVENTS
+// ==========================================
+
+model PlayerStatsSnapshot {
+  id              String                   @id @default(uuid())
+  userId          String?                  @unique
+  user            User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stablePlayerId  String                   @unique // z.B. license:xxxx oder discord:xxxx
+  playerName      String
+  factionName     String?
+  kills           Int                      @default(0)
+  deaths          Int                      @default(0)
+  headshots       Int                      @default(0)
+  playtimeMinutes Int                      @default(0)
+  wins            Int                      @default(0)
+  losses          Int                      @default(0)
+  lastSeenAt      DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+}
+
+model StatEvent {
+  id              String                   @id @default(uuid())
+  eventId         String                   @unique // Eindeutige Event-ID für Idempotenz
+  eventType       String                   // KILL, DEATH, MATCH_FINISH, SESSION_END
+  sourceServer    String                   // z.B. fivem-gameserver-1
+  stablePlayerId  String
+  payload         String                   // JSON Daten
+  processedAt     DateTime                 @default(now())
+  occurredAt      DateTime
+}
+
+// ==========================================
+// 3. INTEGRATIONEN & API SCHICHT
+// ==========================================
+
+model IntegrationConfig {
+  id              String                   @id @default(uuid())
+  name            String                   @unique // FIVEM_SERVER, DISCORD_BOT, INGAME_UI
+  displayName     String
+  description     String?
+  isEnabled       Boolean                  @default(false)
+  apiKeyHash      String?                  // Gesalzener Hash des Secrets
+  apiKeyPrefix    String?                  // z.B. vga_live_xxxx zur Erkennung
+  allowedIps      String?                  // Kommagetrennte IPs
+  rateLimitPerMin Int                      @default(60)
+  lastSyncAt      DateTime?
+  lastPingAt      DateTime?
+  status          String                   @default("NOT_CONFIGURED") // NOT_CONFIGURED, CONNECTED, ERROR
+  settingsJson    String?                  // JSON für anpassbare Parameter
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  logs            IntegrationLog[]
+}
+
+model IntegrationLog {
+  id              String                   @id @default(uuid())
+  integrationId   String
+  integration     IntegrationConfig        @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  level           String                   @default("INFO") // INFO, WARN, ERROR
+  endpoint        String
+  method          String
+  statusCode      Int
+  message         String
+  ipAddress       String?
+  createdAt       DateTime                 @default(now())
+}
+
+// ==========================================
+// 4. HAUSEIGENES CAPTCHA & RATE LIMIT SYSTEM
+// ==========================================
+
+model CaptchaChallenge {
+  id            String    @id @default(uuid())
+  challengeId   String    @unique // Öffentliche kryptografische Challenge-ID
+  action        String    // REGISTER, LOGIN, FORGOT_PASSWORD, CREATE_THREAD, CREATE_POST, CREATE_TICKET
+  sessionId     String    // Bindung an Browsersitzung / Session-Cookie
+  ipAddress     String?   // Bereinigte Client-IP
+  answerHmac    String    // HMAC-SHA256(normalisierte Lösung, CAPTCHA_SECRET)
+  attempts      Int       @default(0) // Verbrauchte Versuche
+  maxAttempts   Int       @default(5) // Maximal 5 Fehlversuche
+  isResolved    Boolean   @default(false) // Erfolgreich verifiziert
+  isInvalidated Boolean   @default(false) // Durch Ablauf, Erneuerung oder Fehlversuche entwertet
+  expiresAt     DateTime  // Gültigkeit maximal 3 Minuten
+  createdAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+
+  @@index([challengeId])
+  @@index([sessionId, action])
+  @@index([expiresAt])
+}
+
+model RateLimitRecord {
+  key           String    @id // Eindeutiger Zählschlüssel (z.B. rl:login:ip:username)
+  count         Int       @default(1)
+  expiresAt     DateTime  // Ablaufzeitpunkt des Rate-Limit Fensters
+  updatedAt     DateTime  @updatedAt
+
+  @@index([expiresAt])
+}
+
+// ==========================================
+// 5. SICHERHEIT, TOKENS & PRIVATE DATEIEN
+// ==========================================
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  tokenHash  String    @unique // SHA-256 Hash des Einmaltokens
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime  // Maximal 15 Minuten Gültigkeit
+  usedAt     DateTime? // Atomare Entwertung
+  createdAt  DateTime  @default(now())
+
+  @@index([tokenHash])
+  @@index([userId])
+}
+
+model PrivateAttachment {
+  id           String    @id @default(uuid())
+  storageKey   String    @unique // Zufällige Kennung außerhalb des Webroots
+  originalName String    // Bereinigter Dateiname
+  mimeType     String    // Verifizierter MIME-Typ (durch Magic Bytes geprüft)
+  fileSize     Int
+  content      Bytes?
+  uploaderId   String
+  uploader     User      @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  ticketId     String?
+  ticket       Ticket?   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+
+  @@index([storageKey])
+  @@index([ticketId])
+  @@index([uploaderId])
+}
+
+
